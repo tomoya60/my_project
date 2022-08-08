@@ -1,0 +1,92 @@
+---
+title: "Week03_NYPD Shooting Incident Data Report"
+output:
+  html_document: default
+  pdf_document: default
+date: '2022-07-03'
+---
+
+
+# NYPD Shooting Incident Data 
+The data in this report is based on the "NYPD Shooting Incident Data (Historic)" in DATA.GOV.
+This data include the list of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year.
+"https://catalog.data.gov/dataset?q=NYPD+Shooting+Incident+Data+%28Historic%29&sort=views_recent+desc&ext_location=&ext_bbox=&ext_prev_extent=-150.46875%2C-80.17871349622823%2C151.875%2C80.17871349622823"
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(leaflet)
+library(widgetframe)
+library(htmltools)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+## Inport data and read csv file. Then create new column that have yyyymm data.plot()
+```{r get_data}
+## Get NYPD Shooting Incident Data
+csv_url <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+csv_data <- read.csv(csv_url)
+original_data <- csv_data
+original_data$yyyymm <- format(mdy(original_data$OCCUR_DATE), "%Y-%m")
+original_data$yyyy <- format(mdy(original_data$OCCUR_DATE), "%Y")
+```
+
+## Data Processing
+```{r summarize per month and city}
+group_by_month <- group_by(original_data, yyyymm)
+group_by_month_boro <- group_by(original_data, BORO, yyyymm)
+summarise_month <- summarise(group_by_month, count=n_distinct(INCIDENT_KEY))
+summarise_month_boro <- summarise(group_by_month_boro, count=n_distinct(INCIDENT_KEY))
+
+group_by_year <- group_by(original_data, yyyy)
+group_by_year_boro <- group_by(original_data, BORO, yyyy)
+summarise_year <- summarise(group_by_year, count=n_distinct(INCIDENT_KEY))
+summarise_year_boro <- summarise(group_by_year_boro, count=n_distinct(INCIDENT_KEY))
+```
+
+
+## Capture trends in the number of incident per BORO
+```{r Trends in the number of case during the entire period}
+g_BORO <- ggplot(summarise_month_boro, aes(x=yyyymm, y=count, group=BORO)) + geom_line(aes(colour = BORO))
+plot(g_BORO)
+g_BORO_year <- ggplot(summarise_year_boro, aes(x=yyyy, y=count, group=BORO)) + geom_line(aes(colour = BORO))
+plot(g_BORO_year)
+```
+
+Aggregating the number of cases, all regions have fewer cases per 2017~2019.However, it can be seen that the number of cases has been increasing since 2020. This data alone does not allow us to analyze this factor, so some other information is needed.
+
+The graph also shows that even during the course of a year, there is a tendency every year for the number of cases to be higher around May-August. As an example, the data for BRONX for 2020 and 2021 only is shown below.
+
+## Visualize 2020/2021 data for BRONX
+```{r plot for BRONX}
+BRONX_2020 <- summarise_month_boro[summarise_month_boro$BORO=="BRONX" & summarise_month_boro$yyyymm>"2019-12" & summarise_month_boro$yyyymm<="2020-12",]
+g_BRONX_2020 <- ggplot(BRONX_2020, aes(x=yyyymm, y=count, group=1)) + geom_line()
+
+BRONX_2021 <- summarise_month_boro[summarise_month_boro$BORO=="BRONX" & summarise_month_boro$yyyymm>"2020-12",]
+g_BRONX_2021 <- ggplot(BRONX_2021, aes(x=yyyymm, y=count, group=1)) + geom_line()
+
+plot(g_BRONX_2020)
+plot(g_BRONX_2021)
+```
+
+Next, we would like to create a forecasting model for the annual number of incident based on the number of incident per year to date.
+```{r model_year_all cities}
+g_yearly_data <- ggplot(summarise_year, aes(x=yyyy, y=count, group=1)) + geom_point() + geom_smooth(method="lm")
+plot(g_yearly_data)
+```
+In this model, it appears that the number of future annual incidents will continue to decline. However, the most recent years, 2020 and 2021, clearly show an increase, and unless there is a reason for the increase in 2020 and 2021 due to special circumstances, etc., it would be difficult to predict the number of cases after 2022 with this model.
+
+
+```{r model_monthly_BRONX_2020-2021}
+data_2020_2021 <- summarise_month[summarise_month$yyyymm>"2019-12" & summarise_month$yyyymm<="2021-12",]
+g_2020_2021 <- ggplot(data_2020_2021, aes(x=yyyymm, y=count, group=1)) + geom_point() + geom_smooth(method="lm")
+plot(g_2020_2021)
+```
+Modeling with the most recent 2020 and 2021 data suggests that the number of incident will continue to increase slightly.
+
+## Conclusion
+The data revealed that the most incidents occurred at BRONX. In addition, there was a temporary significant decrease in the number of incidents in most areas from 2017 to 2019. Then from 2020, the number of incidents increased sharply and is showing a trend of increase.
+
+
